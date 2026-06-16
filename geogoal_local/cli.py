@@ -66,12 +66,9 @@ def _cmd_process(args: argparse.Namespace) -> None:
         from geogoal_local import analytics  # type: ignore[attr-defined]
 
         data_file = Path(args.output_dir) / "match_data.json"
+        stats_file = Path(args.output_dir) / "stats.json"
         if data_file.exists():
-            stats = analytics.compute_stats(str(data_file))
-            stats_path = Path(args.output_dir) / "stats.json"
-            with open(stats_path, "w") as f:
-                json.dump(stats, f, indent=2)
-            print(f"[cli] Stats saved to {stats_path}")
+            analytics.load_and_compute(str(data_file), str(stats_file))
     except ImportError:
         print("[cli] Analytics module not found — skipping stats computation")
 
@@ -128,6 +125,13 @@ def _cmd_blender(args: argparse.Namespace) -> None:
     subprocess.run(cmd, check=True)
 
 
+def _cmd_gui(args: argparse.Namespace) -> None:
+    """Launch the web-based GUI dashboard."""
+    from geogoal_local.gui import run_gui
+
+    run_gui(port=args.port, output_dir=args.output_dir)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="geogoal",
@@ -172,6 +176,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bl.add_argument("--blend", default="output/scene.blend", help="Blender scene path")
     p_bl.add_argument("--fps", type=int, default=25, help="Render FPS")
     p_bl.set_defaults(func=_cmd_blender)
+
+    # ── gui ───────────────────────────────────────────────────────────────
+    p_gui = sub.add_parser("gui", help="Launch web-based GUI dashboard")
+    p_gui.add_argument("--port", type=int, default=8888, help="Server port (default: 8888)")
+    p_gui.add_argument("--output-dir", default="./output", help="Output directory")
+    p_gui.set_defaults(func=_cmd_gui)
 
     return parser
 

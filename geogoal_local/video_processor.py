@@ -94,15 +94,52 @@ class ObjectDetector:
     COCO classes used:
       0  — person   → player
       32 — sports ball → football
+
+    Uses a two-pass detection strategy:
+      1. Primary pass at normal confidence (0.20).
+      2. If few detections, retry with lower confidence (0.10) and
+         multi-scale (larger input size) to catch distant/small players.
     """
 
     def __init__(self, model_name: str = "yolov8n.pt", device: str = "cpu") -> None:
         self.model = YOLO(model_name)
         self.device = device
+        self._last_player_count: int = 0  # track expected count for adaptive retry
 
-    def detect(self, frame: np.ndarray, conf: float = 0.3) -> sv.Detections:
-        """Run inference and return supervision Detections filtered to person+ball."""
-        results = self.model(frame, device=self.device, conf=conf, verbose=False)
+    def detect(self, frame: np.ndarray, conf: float = 0.20) -> sv.Detections:
+        """Run inference and return supervision Detections filtered to person+ball.
+
+        Adaptive strategy: if the primary pass finds very few players compared
+        to recent history, a second pass runs with lower confidence and/or
+        a larger input size to recover missed detections.
+        """
+        dets = self._run(frame, conf=conf)
+        n_persons = int(np.sum(dets.class_id == 0)) if dets.class_id is not None and len(dets) > 0 else 0
+
+        # Adaptive retry: if we found <60% of what we usually see, try harder
+        expected = max(self._last_player_count, 6)
+        if n_persons < expected * 0.6 and n_persons < 15:
+            # Second pass: lower confidence + larger input resolution
+            dets2 = self._run(frame, conf=0.10, imgsz=1280)
+            n2 = int(np.sum(dets2.class_id == 0)) if dets2.class_id is not None and len(dets2) > 0 else 0
+            if n2 > n_persons:
+                dets = dets2
+                n_persons = n2
+
+        # Update running expected count (exponential moving average)
+        if n_persons > 0:
+            self._last_player_count = max(
+                int(0.7 * self._last_player_count + 0.3 * n_persons),
+                n_persons,
+            )
+
+        return dets
+
+    def _run(self, frame: np.ndarray, conf: float = 0.20, imgsz: int = 640) -> sv.Detections:
+        """Single inference pass."""
+        results = self.model(
+            frame, device=self.device, conf=conf, verbose=False, imgsz=imgsz
+        )
         if results[0].boxes is None:
             return sv.Detections.empty()
         detections = sv.Detections.from_ultralytics(results[0])
@@ -119,20 +156,20 @@ class ObjectDetector:
 class ObjectTracker:
     """Assigns persistent IDs to players across frames using ByteTrack.
 
-    Parameters tuned for football tracking:
-      - track_activation_threshold: lowered to 0.25 so detections confirmed sooner.
-      - lost_track_buffer: extended to 60 frames (≈2 s at 5 fps skip) to keep tracks
-        alive through brief occlusions / camera pans.
-      - minimum_matching_threshold: lowered to 0.7 for more lenient IoU association.
-      - frame_rate: set to 5 (matching default ANALYSIS_FRAME_SKIP=4 → 5 fps) so
-        ByteTrack's internal Kalman velocity model has correct time scaling.
+    Parameters aggressively tuned for football tracking:
+      - track_activation_threshold: 0.15 — confirm tracks very early so brief
+        appearances are not discarded.
+      - lost_track_buffer: 120 frames — keep tracks alive up to ~4-5s through
+        occlusions, camera pans, and YOLO misses.
+      - minimum_matching_threshold: 0.6 — more lenient IoU for fast-moving players.
+      - frame_rate: matched to effective fps for correct Kalman velocity.
     """
 
     def __init__(self, frame_rate: int = 5) -> None:
         self.tracker = sv.ByteTrack(
-            track_activation_threshold=0.25,
-            lost_track_buffer=60,
-            minimum_matching_threshold=0.7,
+            track_activation_threshold=0.15,
+            lost_track_buffer=120,
+            minimum_matching_threshold=0.6,
             frame_rate=frame_rate,
         )
 
@@ -298,10 +335,17 @@ class HomographyCalculator:
         dst_pts: np.ndarray,  # shape (N, 2) — pitch coordinates (metres)
         method: str = "cv2",
     ) -> np.ndarray:
-        """Return 3×3 homography matrix H such that dst ≅ H ⋅ src."""
+        """Return 3×3 homography matrix H such that dst ≅ H ⋅ src.
+
+        Falls back to manual DLT if cv2 fails (e.g. exactly 4 points).
+        """
         if method == "manual":
             return self._dlt_manual(src_pts, dst_pts)
-        return self._dlt_cv2(src_pts, dst_pts)
+        try:
+            return self._dlt_cv2(src_pts, dst_pts)
+        except RuntimeError:
+            print("[homography] cv2 failed, falling back to manual DLT")
+            return self._dlt_manual(src_pts, dst_pts)
 
     # ------------------------------------------------------------------
     # Manual DLT (thesis — Objective 2 & 3)
@@ -355,6 +399,91 @@ class HomographyCalculator:
         if H is None:
             raise RuntimeError("cv2.findHomography failed — try more/better keypoints")
         return H
+
+
+# ---------------------------------------------------------------------------
+# 4b. Pitch Mask Detector (pixel-space pre-filter)
+# ---------------------------------------------------------------------------
+
+
+class PitchMaskDetector:
+    """Detects the playing field boundary using color segmentation.
+
+    Uses HSV green detection + morphological operations to find the pitch area.
+    The mask is cached and recomputed every `update_interval` frames.
+    """
+
+    def __init__(self, update_interval: int = 50):
+        self.update_interval = update_interval
+        self._mask: Optional[np.ndarray] = None
+        self._hull: Optional[np.ndarray] = None
+        self._last_frame_idx: int = -999
+
+    def get_mask(self, frame: np.ndarray, frame_idx: int) -> np.ndarray:
+        """Return binary mask of the pitch area. Recomputes if stale."""
+        if self._mask is not None and (frame_idx - self._last_frame_idx) < self.update_interval:
+            return self._mask
+        self._compute(frame, frame_idx)
+        return self._mask
+
+    def is_on_pitch(self, x: float, y: float, margin: int = 15) -> bool:
+        """Check if a pixel coordinate is on the pitch (with margin)."""
+        if self._mask is None:
+            return True
+        h, w = self._mask.shape[:2]
+        x0 = max(0, int(x) - margin)
+        x1 = min(w, int(x) + margin)
+        y0 = max(0, int(y) - margin)
+        y1 = min(h, int(y) + margin)
+        return bool(np.any(self._mask[y0:y1, x0:x1] > 0))
+
+    def is_bbox_on_pitch(self, xyxy: np.ndarray, min_overlap: float = 0.3) -> bool:
+        """Check if a bounding box overlaps sufficiently with the pitch mask."""
+        if self._mask is None:
+            return True
+        x1, y1, x2, y2 = map(int, xyxy)
+        h, w = self._mask.shape[:2]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        if x2 <= x1 or y2 <= y1:
+            return False
+        roi = self._mask[y1:y2, x1:x2]
+        return (np.count_nonzero(roi) / roi.size) >= min_overlap
+
+    def _compute(self, frame: np.ndarray, frame_idx: int):
+        """Detect pitch area using HSV green segmentation."""
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        lower = np.array([30, 25, 30])
+        upper = np.array([85, 255, 255])
+        mask = cv2.inRange(hsv, lower, upper)
+
+        # Morphological cleanup
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
+
+        # Find largest contour (the pitch)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            frame_area = frame.shape[0] * frame.shape[1]
+            if cv2.contourArea(largest) > frame_area * 0.15:
+                self._hull = cv2.convexHull(largest)
+                clean_mask = np.zeros_like(mask)
+                cv2.fillPoly(clean_mask, [self._hull], 255)
+                # Dilate slightly to include players on the edge
+                dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+                self._mask = cv2.dilate(clean_mask, dilate_kernel, iterations=1)
+            else:
+                self._mask = mask
+        else:
+            self._mask = mask
+
+        self._last_frame_idx = frame_idx
+        # Log pitch area stats
+        pitch_pct = np.count_nonzero(self._mask) / (frame.shape[0] * frame.shape[1]) * 100
+        hull_verts = len(self._hull) if self._hull is not None else 0
+        print(f"[pitch-mask] Frame {frame_idx}: pitch covers {pitch_pct:.1f}% of frame (hull: {hull_verts} vertices)")
 
 
 # ---------------------------------------------------------------------------
@@ -413,15 +542,15 @@ class TrackInterpolator:
 
     def __init__(
         self,
-        max_gap_frames: int = 15,
-        ball_predict_frames: int = 8,
-        player_predict_frames: int = 8,
+        max_gap_frames: int = 30,
+        ball_predict_frames: int = 12,
+        player_predict_frames: int = 15,
     ) -> None:
         self.max_gap_frames = max_gap_frames
         self.ball_predict_frames = ball_predict_frames
         # Cuántos frames extrapolar un jugador hacia adelante/atrás cuando su
-        # track desaparece o aparece "tarde". A frame_skip=4 (5fps), 8 frames
-        # ≈ 1.6 segundos de "memoria" antes de dar el track por perdido.
+        # track desaparece o aparece "tarde". Con valores altos, los jugadores
+        # "sobreviven" más tiempo entre detecciones reales.
         self.player_predict_frames = player_predict_frames
 
     def interpolate(self, frames: List[FrameData]) -> List[FrameData]:
@@ -783,6 +912,114 @@ class PitchVisualizer:
 
 
 # ---------------------------------------------------------------------------
+# 7b. Live annotation helper
+# ---------------------------------------------------------------------------
+
+
+def annotate_frame_for_display(
+    frame: np.ndarray,
+    fd: FrameData,
+    detections: Optional[sv.Detections] = None,
+    draw_pitch_mini: bool = True,
+) -> np.ndarray:
+    """Draw tracking annotations on a video frame for live display.
+
+    Draws:
+    - Bounding boxes colored by team (red=home, blue=away, yellow=referee)
+    - Player ID labels above each box
+    - Ball marker (white circle with crosshair)
+    - Mini 2D pitch view in bottom-right corner showing projected positions
+    - Frame info overlay (frame number, timestamp, player count)
+    """
+    annotated = frame.copy()
+    h, w = annotated.shape[:2]
+
+    TEAM_COLORS = {
+        "home": (0, 0, 220),       # Red (BGR)
+        "away": (220, 100, 0),     # Blue (BGR)
+        "referee": (0, 220, 220),  # Yellow (BGR)
+        "unknown": (140, 140, 140),
+    }
+
+    # Draw bounding boxes if detections available
+    if detections is not None and len(detections) > 0:
+        for i in range(len(detections)):
+            xyxy = detections.xyxy[i].astype(int)
+            x1, y1, x2, y2 = xyxy
+
+            tracker_id = int(detections.tracker_id[i]) if detections.tracker_id is not None else i
+            team = "unknown"
+            pid = tracker_id
+            for p in fd.players:
+                if p.id == tracker_id:
+                    team = p.team
+                    pid = p.id
+                    break
+
+            color = TEAM_COLORS.get(team, (140, 140, 140))
+
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+
+            label = f"#{pid} {team[0].upper()}"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw + 4, y1), color, -1)
+            cv2.putText(annotated, label, (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+            bx = (x1 + x2) // 2
+            by = y2
+            cv2.circle(annotated, (bx, by), 4, color, -1)
+
+    # Info overlay (top-left)
+    info_lines = [
+        f"Frame: {fd.frame_idx}",
+        f"Time: {fd.timestamp_ms / 1000:.1f}s",
+        f"Players: {len(fd.players)}",
+        f"Ball: {'Yes' if fd.ball else 'No'}",
+    ]
+    for i, line in enumerate(info_lines):
+        y_pos = 25 + i * 22
+        cv2.putText(annotated, line, (10, y_pos),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(annotated, line, (10, y_pos),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Mini 2D pitch view (bottom-right corner)
+    if draw_pitch_mini and fd.players:
+        mini_w, mini_h = 210, 136
+        margin = 10
+        ox = w - mini_w - margin
+        oy = h - mini_h - margin
+
+        overlay = annotated.copy()
+        cv2.rectangle(overlay, (ox, oy), (ox + mini_w, oy + mini_h), (20, 40, 20), -1)
+        cv2.addWeighted(overlay, 0.7, annotated, 0.3, 0, annotated)
+
+        cv2.rectangle(annotated, (ox, oy), (ox + mini_w, oy + mini_h), (255, 255, 255), 1)
+        cv2.line(annotated, (ox + mini_w // 2, oy), (ox + mini_w // 2, oy + mini_h), (255, 255, 255), 1)
+        cv2.circle(annotated, (ox + mini_w // 2, oy + mini_h // 2), int(9.15 / 105 * mini_w), (255, 255, 255), 1)
+
+        for p in fd.players:
+            px = int(ox + (p.x / PITCH_LENGTH_M) * mini_w)
+            py = int(oy + (p.y / PITCH_WIDTH_M) * mini_h)
+            px = max(ox, min(ox + mini_w, px))
+            py = max(oy, min(oy + mini_h, py))
+            color = TEAM_COLORS.get(p.team, (140, 140, 140))
+            cv2.circle(annotated, (px, py), 4, color, -1)
+            cv2.circle(annotated, (px, py), 4, (255, 255, 255), 1)
+
+        if fd.ball:
+            bx = int(ox + (fd.ball[0] / PITCH_LENGTH_M) * mini_w)
+            by = int(oy + (fd.ball[1] / PITCH_WIDTH_M) * mini_h)
+            bx = max(ox, min(ox + mini_w, bx))
+            by = max(oy, min(oy + mini_h, by))
+            cv2.circle(annotated, (bx, by), 5, (255, 255, 255), -1)
+            cv2.circle(annotated, (bx, by), 5, (0, 0, 0), 1)
+
+    return annotated
+
+
+# ---------------------------------------------------------------------------
 # 8. Video Processor (Orchestrator)
 # ---------------------------------------------------------------------------
 
@@ -812,6 +1049,7 @@ class VideoProcessor:
         self.detector = ObjectDetector(model_name, device)
         self.tracker = ObjectTracker(frame_rate=frame_rate)
         self.classifier = TeamClassifier(player_tags=player_tags)
+        self.pitch_mask = PitchMaskDetector(update_interval=50)
         self.interpolator = TrackInterpolator(
             max_gap_frames=max_gap_frames,
             ball_predict_frames=ball_predict_frames,
@@ -835,6 +1073,8 @@ class VideoProcessor:
         self.max_refs: int = 3                # tolerancia árbitros / asistentes
         print(f"[processor] lineup_mode={lineup_mode} → max {self.max_per_team} por equipo + {self.max_refs} árbitros")
         self.identity_map: Dict[int, int] = identity_map or {}
+        self.frame_callback: Optional[callable] = None
+        self._last_raw_detections: Optional[sv.Detections] = None
 
     # ------------------------------------------------------------------
     # Load video
@@ -879,6 +1119,16 @@ class VideoProcessor:
             calib = json.load(f)
         src_pts = np.array(calib["src_points"], dtype=np.float32)
         dst_pts = np.array(calib["dst_points"], dtype=np.float32)
+
+        # Validate: dst_points must not all be identical (common selector bug)
+        if len(dst_pts) >= 2 and np.allclose(dst_pts, dst_pts[0]):
+            raise ValueError(
+                "All destination points in calib.json are identical "
+                f"({dst_pts[0].tolist()}). Each point must map to a DIFFERENT "
+                "pitch landmark. Please recalibrate: select a different landmark "
+                "from the dropdown BEFORE clicking each point on the image."
+            )
+
         method = calib.get("method", "cv2")
         self.set_homography(src_pts=src_pts, dst_pts=dst_pts, method=method)
         # Load player tags if present
@@ -933,6 +1183,17 @@ class VideoProcessor:
                 continue
 
             fd = self._process_frame(frame, frame_idx)
+
+            # Live tracking callback — sends annotated frame to GUI
+            if self.frame_callback is not None:
+                try:
+                    annotated = annotate_frame_for_display(
+                        frame, fd, detections=getattr(self, '_last_raw_detections', None)
+                    )
+                    self.frame_callback(annotated, fd, frame_idx)
+                except Exception:
+                    pass  # don't let callback errors break processing
+
             all_frames.append(fd)
 
             if visualize_every > 0 and frame_idx % visualize_every == 0:
@@ -987,14 +1248,39 @@ class VideoProcessor:
         detections = self.detector.detect(frame)
         mean_conf = 1.0
         if len(detections) == 0:
+            # Still create FrameData — the interpolator will fill gaps later.
+            # Feed empty detections to tracker so Kalman state advances.
+            self.tracker.track(detections)
+            self._last_raw_detections = detections
             return FrameData(frame_idx=frame_idx, timestamp_ms=timestamp_ms)
 
         if detections.confidence is not None and len(detections.confidence) > 0:
             mean_conf = float(np.mean(detections.confidence))
 
+        # ── Pixel-space pre-filter: remove detections outside visible pitch ──
+        self.pitch_mask.get_mask(frame, frame_idx)
+        pitch_keep = []
+        for i in range(len(detections)):
+            xyxy = detections.xyxy[i]
+            class_id = detections.class_id[i] if detections.class_id is not None else -1
+            # Always keep ball detections (they might be in the air above non-green areas)
+            if class_id == 32:
+                pitch_keep.append(i)
+                continue
+            # Use the bottom-center of bbox as the foot position
+            foot_x = (xyxy[0] + xyxy[2]) / 2
+            foot_y = xyxy[3]
+            if self.pitch_mask.is_on_pitch(foot_x, foot_y, margin=20):
+                pitch_keep.append(i)
+
+        if pitch_keep:
+            detections = detections[pitch_keep]
+        # If nothing survived the mask, keep all (mask might be bad)
+
         fd = FrameData(frame_idx=frame_idx, timestamp_ms=timestamp_ms, confidence=mean_conf)
 
         detections = self.tracker.track(detections)
+        self._last_raw_detections = detections
 
         if frame_idx == 0:
             teams = self.classifier.fit_predict(frame, detections)

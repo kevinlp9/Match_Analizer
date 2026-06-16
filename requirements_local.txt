@@ -1,0 +1,12 @@
+# Geo-Goal Local — dependencies (100% offline, no cloud services)
+numpy
+opencv-python-headless
+ultralytics
+scikit-learn
+supervision
+torch
+fastapi
+uvicorn
+python-multipart
+# Note: Blender 4.x is a system install (brew install --cask blender or blender.org)
+# The bpy module is bundled with Blender and invoked via `blender --background --python`
