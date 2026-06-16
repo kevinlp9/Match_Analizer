@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1400">
+<title>Homografía — Geo-Goal AI</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1400px; height: 900px; overflow: hidden;
+    background: #0d1117;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e6edf3;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #1a3a2a 0%, #0d2a1a 100%);
+    border-bottom: 2px solid #2ea043;
+    padding: 18px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 26px; font-weight: 700; color: #3fb950; letter-spacing: 1px; }
+  .header .sub { font-size: 13px; color: #8b949e; }
+  .badge {
+    background: #2ea043; color: #fff; padding: 4px 12px;
+    border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+
+  /* ── Layout ── */
+  .body { display: flex; height: 834px; }
+
+  /* ── Left: field diagram ── */
+  .left {
+    width: 520px; flex-shrink: 0;
+    padding: 24px 20px 24px 32px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .section-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 2px;
+    color: #58a6ff; text-transform: uppercase; margin-bottom: 4px;
+  }
+
+  /* Field SVG container */
+  .field-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .field-box svg { display: block; margin: auto; }
+
+  /* ── Center: formula + code ── */
+  .center {
+    flex: 1;
+    padding: 24px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 16px 20px;
+  }
+  .card.green { border-color: #2ea043; }
+  .card.blue  { border-color: #388bfd; }
+  .card.orange { border-color: #d29922; }
+  .card.purple { border-color: #8b5cf6; }
+
+  /* Matrix */
+  .matrix-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .matrix {
+    display: inline-grid; grid-template-columns: repeat(3, 52px);
+    gap: 4px; padding: 10px 14px;
+    background: #0d1117; border-radius: 6px;
+    border-left: 3px solid #388bfd;
+    border-right: 3px solid #388bfd;
+  }
+  .matrix span {
+    font-family: 'Courier New', monospace;
+    font-size: 13px; text-align: center; color: #79c0ff;
+    line-height: 22px;
+  }
+  .arrow-eq { font-size: 22px; color: #3fb950; font-weight: bold; }
+  .vec {
+    display: inline-flex; flex-direction: column; align-items: center;
+    padding: 8px 10px;
+    background: #0d1117; border-radius: 6px;
+    border-left: 3px solid #3fb950;
+    border-right: 3px solid #3fb950;
+    gap: 3px;
+  }
+  .vec span { font-family: 'Courier New', monospace; font-size: 13px; color: #56d364; line-height: 20px; }
+
+  .formula-label { font-size: 11px; color: #8b949e; margin-top: 6px; }
+
+  /* Steps */
+  .steps { display: flex; flex-direction: column; gap: 8px; }
+  .step {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: #0d1117; border-radius: 7px; padding: 8px 12px;
+  }
+  .step-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #388bfd; color: #fff;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .step-text { font-size: 12px; line-height: 1.5; color: #c9d1d9; }
+  .step-text code {
+    background: #1c2128; color: #ff7b72;
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 11px; font-family: 'Courier New', monospace;
+  }
+  .step-text .hl { color: #3fb950; font-weight: 600; }
+
+  /* De-homogenize */
+  .dehom { display: flex; gap: 20px; align-items: center; margin-top: 6px; }
+  .dehom-item { text-align: center; }
+  .dehom-item .eq {
+    font-family: 'Courier New', monospace;
+    font-size: 15px; color: #ffa657;
+    background: #0d1117; border-radius: 6px;
+    padding: 6px 14px;
+  }
+  .dehom-item .lbl { font-size: 10px; color: #8b949e; margin-top: 4px; }
+  .divider { color: #30363d; font-size: 22px; }
+
+  /* ── Right panel ── */
+  .right {
+    width: 300px; flex-shrink: 0;
+    padding: 24px 24px 24px 8px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .method-card {
+    border-radius: 9px; padding: 13px 15px;
+    border: 1px solid #30363d;
+  }
+  .method-card.ransac { background: #0e1f0e; border-color: #2ea043; }
+  .method-card.dlt    { background: #0e1522; border-color: #388bfd; }
+  .method-card h3 { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+  .method-card.ransac h3 { color: #3fb950; }
+  .method-card.dlt h3    { color: #58a6ff; }
+  .method-card p { font-size: 11px; color: #8b949e; line-height: 1.5; }
+  .method-card code {
+    display: block; margin-top: 6px;
+    background: #0d1117; color: #ff7b72;
+    font-family: 'Courier New', monospace;
+    font-size: 10.5px; padding: 5px 8px; border-radius: 4px;
+    line-height: 1.6;
+  }
+
+  .pipeline {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 9px; padding: 13px 15px;
+  }
+  .pipeline h3 { font-size: 11px; font-weight: 700; color: #d29922; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; }
+  .pipe-step {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .pipe-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pipe-step p { font-size: 11px; color: #c9d1d9; }
+  .pipe-step p small { color: #8b949e; font-size: 10px; }
+  .pipe-arrow { margin-left: 3px; color: #30363d; font-size: 14px; }
+
+  .note-box {
+    background: #1c1400; border: 1px solid #d29922;
+    border-radius: 8px; padding: 11px 14px;
+  }
+  .note-box h4 { font-size: 11px; color: #e3b341; font-weight: 700; margin-bottom: 5px; }
+  .note-box p { font-size: 11px; color: #c9d1d9; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <h1>📐 Homografía — Proyección Píxel → Campo Real</h1>
+    <div class="sub">Geo-Goal AI · video_processor.py · HomographyCalculator + PerspectiveTransformer</div>
+  </div>
+  <div class="badge">H [3×3]</div>
+</div>
+
+<div class="body">
+
+  <!-- LEFT: Field diagram -->
+  <div class="left">
+    <div class="section-title">Correspondencia de 4 puntos</div>
+    <div class="field-box">
+      <!-- Field SVG: 105m x 68m proportional -->
+      <svg width="440" height="300" viewBox="0 0 440 300">
+        <!-- background -->
+        <rect width="440" height="300" fill="#0d1117" rx="6"/>
+
+        <!-- ─── VIDEO FRAME (left) ─── -->
+        <text x="100" y="20" fill="#8b949e" font-size="11" text-anchor="middle" font-family="Segoe UI">Frame de video (píxeles)</text>
+        <!-- frame border -->
+        <rect x="10" y="30" width="190" height="140" fill="#1a2030" stroke="#388bfd" stroke-width="1.5" rx="3"/>
+        <!-- fake field in video (perspective trapezoid) -->
+        <polygon points="55,155 160,155 145,65 70,65" fill="#1a3a10" stroke="#2ea043" stroke-width="1" opacity="0.7"/>
+        <!-- center line perspective -->
+        <line x1="107" y1="65" x2="100" y2="155" stroke="#2ea043" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.5"/>
+        <!-- penalty areas -->
+        <rect x="55" y="110" width="30" height="45" fill="none" stroke="#2ea043" stroke-width="0.7" opacity="0.5"/>
+        <rect x="130" y="110" width="30" height="45" fill="none" stroke="#2ea043" stroke-width="0.7" opacity="0.5"/>
+        <!-- 4 corner src points -->
+        <!-- TL=[509,183]→mapped to svg≈(70,65) -->
+        <circle cx="70" cy="65" r="6" fill="#ff7b72" stroke="#fff" stroke-width="1.5"/>
+        <text x="60" y="58" fill="#ff7b72" font-size="10" font-family="Courier New">[509,183]</text>
+        <!-- TR=[639,307]→mapped to (145,65) -->
+        <circle cx="145" cy="65" r="6" fill="#ff7b72" stroke="#fff" stroke-width="1.5"/>
+        <text x="135" y="58" fill="#ff7b72" font-size="10" font-family="Courier New">[639,307]</text>
+        <!-- BR=[0,306]→mapped to (160,155) -->
+        <circle cx="160" cy="155" r="6" fill="#ff7b72" stroke="#fff" stroke-width="1.5"/>
+        <text x="160" y="170" fill="#ff7b72" font-size="10" font-family="Courier New">[0,306]</text>
+        <!-- BL=[125,184]→mapped to (55,155) -->
+        <circle cx="55" cy="155" r="6" fill="#ff7b72" stroke="#fff" stroke-width="1.5"/>
+        <text x="5" y="170" fill="#ff7b72" font-size="10" font-family="Courier New">[125,184]</text>
+
+        <!-- ─── ARROWS ─── -->
+        <defs>
+          <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#3fb950"/>
+          </marker>
+          <marker id="ab" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#8b5cf6"/>
+          </marker>
+        </defs>
+        <!-- arrows from corners -->
+        <line x1="215" y1="80" x2="225" y2="80" stroke="#3fb950" stroke-width="2" marker-end="url(#ah)"/>
+        <text x="215" y="75" fill="#3fb950" font-size="16" font-weight="bold">→</text>
+
+        <!-- H matrix in middle -->
+        <rect x="212" y="90" width="32" height="110" fill="#161b22" stroke="#8b5cf6" stroke-width="1.5" rx="4"/>
+        <text x="228" y="112" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Segoe UI" font-weight="700">H</text>
+        <text x="228" y="127" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">h₁₁ h₁₂</text>
+        <text x="228" y="142" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">h₁₃ h₂₁</text>
+        <text x="228" y="157" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">h₂₂ h₂₃</text>
+        <text x="228" y="172" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">h₃₁ h₃₂</text>
+        <text x="228" y="187" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">h₃₃</text>
+        <text x="228" y="108" fill="#8b5cf6" font-size="9" text-anchor="middle" font-family="Courier New">[ 3×3 ]</text>
+
+        <!-- ─── REAL FIELD (right) ─── -->
+        <text x="350" y="20" fill="#8b949e" font-size="11" text-anchor="middle" font-family="Segoe UI">Campo real (metros)</text>
+        <!-- field -->
+        <rect x="258" y="30" width="178" height="116" fill="#1a3a10" stroke="#2ea043" stroke-width="1.5" rx="2"/>
+        <!-- field lines -->
+        <line x1="347" y1="30" x2="347" y2="146" stroke="#2ea043" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.6"/>
+        <!-- penalty boxes -->
+        <rect x="258" y="68" width="30" height="44" fill="none" stroke="#2ea043" stroke-width="0.8" opacity="0.5"/>
+        <rect x="406" y="68" width="30" height="44" fill="none" stroke="#2ea043" stroke-width="0.8" opacity="0.5"/>
+        <!-- centre circle -->
+        <circle cx="347" cy="88" r="16" fill="none" stroke="#2ea043" stroke-width="0.7" opacity="0.5"/>
+        <!-- 4 corners dst points -->
+        <!-- TL=[0,0]→svg (258,30) -->
+        <circle cx="258" cy="30" r="6" fill="#3fb950" stroke="#fff" stroke-width="1.5"/>
+        <text x="240" y="23" fill="#3fb950" font-size="10" font-family="Courier New">[0,0]</text>
+        <!-- TR=[105,0]→svg(436,30) -->
+        <circle cx="436" cy="30" r="6" fill="#3fb950" stroke="#fff" stroke-width="1.5"/>
+        <text x="418" y="23" fill="#3fb950" font-size="10" font-family="Courier New">[105,0]</text>
+        <!-- BR=[105,68]→svg(436,146) -->
+        <circle cx="436" cy="146" r="6" fill="#3fb950" stroke="#fff" stroke-width="1.5"/>
+        <text x="418" y="162" fill="#3fb950" font-size="10" font-family="Courier New">[105,68]</text>
+        <!-- BL=[0,68]→svg(258,146) -->
+        <circle cx="258" cy="146" r="6" fill="#3fb950" stroke="#fff" stroke-width="1.5"/>
+        <text x="240" y="162" fill="#3fb950" font-size="10" font-family="Courier New">[0,68]</text>
+
+        <!-- dimension labels -->
+        <text x="347" y="180" fill="#8b949e" font-size="10" text-anchor="middle" font-family="Segoe UI">← 105 m →</text>
+        <text x="248" y="92" fill="#8b949e" font-size="10" text-anchor="middle" font-family="Segoe UI" transform="rotate(-90,248,92)">68 m</text>
+
+        <!-- Legend -->
+        <circle cx="20" cy="220" r="5" fill="#ff7b72"/>
+        <text x="30" y="224" fill="#ff7b72" font-size="11" font-family="Segoe UI">Píxeles (src)</text>
+        <circle cx="20" cy="240" r="5" fill="#3fb950"/>
+        <text x="30" y="244" fill="#3fb950" font-size="11" font-family="Segoe UI">Metros (dst)</text>
+        <rect x="10" y="252" width="14" height="14" fill="#161b22" stroke="#8b5cf6" stroke-width="1.5" rx="2"/>
+        <text x="30" y="263" fill="#8b5cf6" font-size="11" font-family="Segoe UI">Matriz H [3×3]</text>
+
+        <!-- player example -->
+        <text x="340" y="200" fill="#8b949e" font-size="10" font-family="Segoe UI" text-anchor="middle">Jugador detectado por YOLO</text>
+        <!-- bbox in video frame (small) -->
+        <rect x="95" y="85" width="22" height="38" fill="none" stroke="#ffa657" stroke-width="1.5" stroke-dasharray="2,2"/>
+        <!-- base point dot -->
+        <circle cx="106" cy="123" r="3" fill="#ffa657"/>
+        <text x="128" y="128" fill="#ffa657" font-size="9.5" font-family="Segoe UI">base point</text>
+        <!-- arrow to field point -->
+        <circle cx="330" cy="100" r="4" fill="#ffa657"/>
+        <text x="335" y="97" fill="#ffa657" font-size="9" font-family="Segoe UI">(x,y)m</text>
+      </svg>
+    </div>
+
+    <!-- base point note -->
+    <div class="card orange" style="padding:10px 14px;">
+      <div class="section-title" style="margin-bottom:4px;">Punto base del jugador</div>
+      <div style="font-size:12px; color:#c9d1d9; line-height:1.5;">
+        Se usa <span style="color:#ffa657; font-weight:600;">centro inferior del bbox</span> (pies),
+        no el centro del cuerpo — reduce el error de perspectiva.<br>
+        <code style="background:#0d1117;color:#ff7b72;font-family:'Courier New';font-size:11px;padding:2px 6px;border-radius:3px;margin-top:4px;display:inline-block;">
+          x_c = (x1+x2)/2 · y_b = y2
+        </code>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: formula + steps -->
+  <div class="center">
+    <div class="section-title">Transformación matemática</div>
+
+    <!-- Matrix formula -->
+    <div class="card blue">
+      <div style="font-size:12px; color:#8b949e; margin-bottom:10px;">Proyección homográfica completa</div>
+      <div class="matrix-wrap">
+        <div class="vec">
+          <span>u</span><span>v</span><span>w</span>
+        </div>
+        <div class="arrow-eq">=</div>
+        <div class="matrix">
+          <span>h₁₁</span><span>h₁₂</span><span>h₁₃</span>
+          <span>h₂₁</span><span>h₂₂</span><span>h₂₃</span>
+          <span>h₃₁</span><span>h₃₂</span><span>h₃₃</span>
+        </div>
+        <div style="font-size:20px;color:#3fb950;font-weight:bold;">@</div>
+        <div class="vec">
+          <span>px</span><span>py</span><span>1</span>
+        </div>
+      </div>
+      <div class="formula-label">H es la matriz 3×3 calculada con los 4 puntos ancla. El vector [px,py,1] es coordenada homogénea del píxel.</div>
+    </div>
+
+    <!-- De-homogenize -->
+    <div class="card green">
+      <div style="font-size:12px; color:#8b949e; margin-bottom:8px;">De-homogenización → coordenadas métricas finales</div>
+      <div class="dehom">
+        <div class="dehom-item">
+          <div class="eq">x_m = u / w</div>
+          <div class="lbl">longitud del campo (0–105 m)</div>
+        </div>
+        <div class="divider">·</div>
+        <div class="dehom-item">
+          <div class="eq">y_m = v / w</div>
+          <div class="lbl">ancho del campo (0–68 m)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Steps -->
+    <div class="card" style="flex:1;">
+      <div class="section-title" style="margin-bottom:10px;">Flujo por frame</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">
+            YOLO detecta bbox <code>[x1,y1,x2,y2]</code> del jugador/balón
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">
+            <code>player_base_point()</code> → <span class="hl">px = (x1+x2)/2, py = y2</span> (pies en el suelo)
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">
+            <code>pixel_to_pitch(px, py)</code> → multiplica <span class="hl">H @ [px, py, 1]ᵀ</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text">
+            De-homogeniza: <span class="hl">x = u/w · y = v/w</span> en metros reales
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-text">
+            Clamp ±5 m del campo — descarta falsas detecciones fuera del pitch
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-text">
+            <code>Player2D(x_m, y_m)</code> → <span class="hl">TrackInterpolator</span> → heatmap / stats
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: methods + pipeline -->
+  <div class="right">
+    <div class="section-title">Métodos de cálculo</div>
+
+    <div class="method-card ransac">
+      <h3>✅ OpenCV + RANSAC (producción)</h3>
+      <p>Robusto ante puntos atípicos. Itera aleatoriamente para minimizar error de reproyección.</p>
+      <code>cv2.findHomography(<br>  src_pts, dst_pts,<br>  method=cv2.RANSAC,<br>  ransacReprojThreshold=3.0<br>)</code>
+    </div>
+
+    <div class="method-card dlt">
+      <h3>📐 DLT manual + SVD (tesis)</h3>
+      <p>Implementación educativa. Arma matriz A (2N×9) y extrae H del último vector singular.</p>
+      <code>_, _, Vt = np.linalg.svd(A)<br>H = Vt[-1].reshape(3,3)<br>H /= H[2,2]  # normaliza</code>
+    </div>
+
+    <div class="pipeline">
+      <h3>📍 Pipeline</h3>
+      <div class="pipe-step">
+        <div class="pipe-dot" style="background:#d29922;"></div>
+        <p><b>set_homography()</b><br><small>main.py:163, worker.py:156 — antes de procesar</small></p>
+      </div>
+      <div class="pipe-step" style="padding-left:6px;">
+        <div style="color:#30363d;font-size:18px;margin-left:-2px;">↓</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-dot" style="background:#3fb950;"></div>
+        <p><b>ByteTrack</b> asigna IDs a tracks</p>
+      </div>
+      <div class="pipe-step" style="padding-left:6px;">
+        <div style="color:#30363d;font-size:18px;margin-left:-2px;">↓</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-dot" style="background:#388bfd;"></div>
+        <p><b>pixel_to_pitch()</b> por cada detección<br><small>líneas 1163–1164</small></p>
+      </div>
+      <div class="pipe-step" style="padding-left:6px;">
+        <div style="color:#30363d;font-size:18px;margin-left:-2px;">↓</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-dot" style="background:#8b5cf6;"></div>
+        <p><b>TrackInterpolator</b> — ya en metros</p>
+      </div>
+      <div class="pipe-step" style="padding-left:6px;">
+        <div style="color:#30363d;font-size:18px;margin-left:-2px;">↓</div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-dot" style="background:#ffa657;"></div>
+        <p><b>Heatmap + Stats</b></p>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <h4>⚙️ Puntos ancla por defecto</h4>
+      <p>
+        DEFAULT_SRC: 4 esquinas del campo <b>en píxeles</b>, anotadas en un frame real.<br>
+        DEFAULT_DST: <b>[0,0] [105,0] [105,68] [0,68]</b> — esquinas FIFA.<br>
+        Se pueden sobreescribir por CLI: <code style="color:#ffa657;font-size:10px;">--src-pts</code>
+      </p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

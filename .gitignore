@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Sensitive config
+.env
+.m2m_token.json
+
+# Generated output
+output/
+uploads/
+
+# Model weights (download separately: https://github.com/ultralytics/assets/releases)
+yolov8n.pt
+
+# macOS
+.DS_Store

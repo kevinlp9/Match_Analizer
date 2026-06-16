@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geo-Goal AI · Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #39FF14;
+      --green-dim: rgba(57,255,20,0.08);
+      --green-border: rgba(57,255,20,0.15);
+      --bg: #050505;
+      --bg-card: #0a0a0a;
+      --bg-elevated: #111;
+      --text: #e5e7eb;
+      --text-muted: #6b7280;
+      --text-dim: #9ca3af;
+      --border: rgba(255,255,255,0.06);
+      --radius: 16px;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(57,255,20,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(57,255,20,0.025) 1px, transparent 1px);
+      background-size: 64px 64px;
+      pointer-events: none;
+    }
+    .bg-glow {
+      position: fixed; z-index: 0; border-radius: 50%;
+      filter: blur(200px); opacity: 0.08; pointer-events: none;
+    }
+    .glow-tl { width: 500px; height: 500px; background: #39FF14; top: -150px; left: -100px; }
+    .glow-br { width: 400px; height: 400px; background: #22c55e; bottom: -150px; right: -80px; }
+
+    /* ── Layout ── */
+    .app { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 0; border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 12px; }
+    .topbar-logo {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, #39FF14, #22c55e);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 24px rgba(57,255,20,0.25);
+    }
+    .topbar-logo svg { width: 20px; height: 20px; }
+    .topbar-title { font-size: 20px; font-weight: 800; color: #fff; }
+    .topbar-title span { color: var(--green); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .user-badge {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(57,255,20,0.06); border: 1px solid var(--green-border);
+      border-radius: 40px; padding: 6px 16px 6px 6px;
+    }
+    .user-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, #39FF14, #059669);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: #000;
+    }
+    .user-name { font-size: 13px; font-weight: 600; color: #fff; }
+    .user-role {
+      font-size: 10px; font-weight: 600; color: var(--green);
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .btn-logout {
+      background: transparent; border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-dim); padding: 8px 18px; border-radius: 10px;
+      font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn-logout:hover { border-color: rgba(239,68,68,0.4); color: #f87171; }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px 24px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .stat-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .stat-icon.green { background: rgba(57,255,20,0.1); }
+    .stat-icon.amber { background: rgba(250,204,21,0.1); }
+    .stat-icon.blue { background: rgba(59,130,246,0.1); }
+    .stat-icon.red { background: rgba(239,68,68,0.1); }
+    .stat-icon svg { width: 22px; height: 22px; }
+    .stat-value { font-size: 28px; font-weight: 900; color: #fff; line-height: 1; }
+    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-top: 4px; }
+
+    /* ── Main grid ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Section cards ── */
+    .section {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .section-header {
+      padding: 18px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .section-title { font-size: 15px; font-weight: 700; color: #fff; }
+    .section-badge {
+      font-size: 10px; font-weight: 700; padding: 4px 10px;
+      border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .badge-green { background: rgba(57,255,20,0.12); color: var(--green); }
+    .badge-gray { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+    .badge-amber { background: rgba(250,204,21,0.12); color: #facc15; }
+    .badge-red { background: rgba(239,68,68,0.12); color: #f87171; }
+    .section-body { padding: 20px 24px; }
+    .section-body.no-pad { padding: 0; }
+
+    /* ── Worker card (sidebar) ── */
+    .worker-pulse {
+      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 10px rgba(57,255,20,0.6);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.15); }
+    }
+    .worker-off { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.4); animation: none; }
+    .info-row {
+      display: flex; justify-content: space-between; padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { font-size: 12px; color: var(--text-muted); }
+    .info-value { font-size: 13px; font-weight: 600; color: #fff; }
+
+    /* ── Job list ── */
+    .job-item {
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .job-item:last-child { border-bottom: none; }
+    .job-item:hover { background: rgba(255,255,255,0.015); }
+    .job-status-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-queued { background: #facc15; box-shadow: 0 0 8px rgba(250,204,21,0.3); }
+    .dot-processing { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.4); animation: pulse 1.5s ease-in-out infinite; }
+    .dot-completed { background: #39FF14; }
+    .dot-failed { background: #ef4444; }
+    .job-info { flex: 1; min-width: 0; }
+    .job-match { font-size: 14px; font-weight: 700; color: #fff; }
+    .job-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .job-badge {
+      font-size: 10px; font-weight: 700; padding: 4px 10px;
+      border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    /* ── History ── */
+    .history-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      margin-top: 24px;
+    }
+    @media (max-width: 900px) {
+      .history-grid { grid-template-columns: 1fr; }
+    }
+    .history-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.15s, border 0.15s;
+    }
+    .history-item:hover { background: rgba(255,255,255,0.02); }
+    .history-item.active {
+      background: rgba(57,255,20,0.05);
+      border-left: 3px solid var(--green);
+    }
+    .history-title { font-size: 13px; font-weight: 700; color: #fff; }
+    .history-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .history-detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .history-detail-row:last-child { border-bottom: none; }
+    .detail-label { font-size: 12px; color: var(--text-muted); }
+    .detail-value { font-size: 13px; font-weight: 600; color: #fff; text-align: right; }
+    .detail-link { color: var(--green); text-decoration: none; word-break: break-all; }
+    .detail-link:hover { text-decoration: underline; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-radius: 10px;
+      font-size: 13px; font-weight: 700; font-family: inherit;
+      cursor: pointer; transition: all 0.2s; border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #39FF14, #22c55e);
+      color: #000;
+    }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-ghost {
+      background: transparent; border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text-dim);
+    }
+    .btn-ghost:hover { border-color: var(--green-border); color: #fff; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; filter: none; transform: none; }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 48px 24px; }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
+    .empty-title { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+    .empty-desc { font-size: 13px; color: var(--text-muted); }
+
+    /* ── Progress bar ── */
+    .progress-wrap { margin-top: 16px; }
+    .progress-bar {
+      width: 100%; height: 6px; background: rgba(255,255,255,0.06);
+      border-radius: 10px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 10px;
+      background: linear-gradient(90deg, #39FF14, #22c55e);
+      transition: width 0.6s ease;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(0,0,0,0.3); border-top-color: #000;
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 999;
+      background: #111; border: 1px solid var(--green-border);
+      border-radius: 12px; padding: 14px 20px;
+      font-size: 13px; font-weight: 600; color: #fff;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      opacity: 0; transform: translateY(10px); transition: all 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: rgba(239,68,68,0.3); color: #f87171; }
+
+    .timestamp { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow glow-tl"></div>
+  <div class="bg-glow glow-br"></div>
+
+  <div class="app">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="16,10 8,10 10,6 14,6"/>
+            <line x1="12" y1="10" x2="12" y2="18"/>
+            <line x1="8" y1="14" x2="16" y2="14"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="topbar-title">Geo<span>Goal</span> AI</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="workerStatusBadge" class="section-badge badge-gray">cargando…</span>
+        <div class="user-badge">
+          <div class="user-avatar">{{ userInitial }}</div>
+          <div>
+            <div class="user-name">{{ user.name }}</div>
+            <div class="user-role">{{ user.role }}</div>
+          </div>
+        </div>
+        <button class="btn-logout" onclick="handleLogout()">Salir</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#39FF14" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statQueued">—</div>
+          <div class="stat-label">En cola</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon blue">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statProcessing">—</div>
+          <div class="stat-label">Procesando</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon amber">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statDevice">—</div>
+          <div class="stat-label">Dispositivo</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon red">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div>
+          <div class="stat-value" id="statFailed">—</div>
+          <div class="stat-label">Fallidos</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main-grid">
+      <!-- Left: job queue -->
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">Cola de análisis</h2>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span id="queueCount" class="section-badge badge-gray">0 jobs</span>
+            <button class="btn btn-ghost" onclick="forcePoll()" id="btnPoll">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Forzar poll
+            </button>
+          </div>
+        </div>
+        <div class="section-body no-pad" id="jobList" style="max-height:500px;overflow-y:auto;">
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <div class="empty-title">Sin trabajos pendientes</div>
+            <div class="empty-desc">Los partidos con análisis solicitado aparecerán aquí.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: worker + system resources -->
+      <div style="display:flex;flex-direction:column;gap:20px;">
+
+        <!-- Worker card -->
+        <div class="section">
+          <div class="section-header">
+            <h2 class="section-title">Worker</h2>
+            <span id="workerDot" class="section-badge badge-gray">—</span>
+          </div>
+          <div class="section-body">
+            <div id="workerInfo">
+              <div class="info-row"><span class="info-label">Estado</span><span class="info-value">—</span></div>
+              <div class="info-row"><span class="info-label">Job actual</span><span class="info-value">—</span></div>
+              <div class="info-row"><span class="info-label">Poll cada</span><span class="info-value">—</span></div>
+              <div class="info-row"><span class="info-label">Dispositivo</span><span class="info-value">—</span></div>
+            </div>
+            <div id="processingProgress" style="display:none;" class="progress-wrap">
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;color:#6b7280;">Procesando job <span id="progJobId" style="color:#fff;">—</span></span>
+                <span style="font-size:12px;color:#39FF14;font-weight:700;" id="progPct">0%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:0%;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System resources card -->
+        <div class="section">
+          <div class="section-header">
+            <h2 class="section-title">Recursos del sistema</h2>
+            <span id="uptimeBadge" class="section-badge badge-gray">—</span>
+          </div>
+          <div class="section-body" style="display:flex;flex-direction:column;gap:14px;">
+
+            <!-- CPU -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#39FF14" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/><line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="15" x2="4" y2="15"/><line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="15" x2="22" y2="15"/></svg>
+                  CPU <span id="cpuCores" style="color:#6b7280;font-size:10px;"></span>
+                </span>
+                <span id="cpuPct" style="font-size:13px;font-weight:700;color:#e5e7eb;">—</span>
+              </div>
+              <div class="progress-bar" style="height:8px;">
+                <div id="cpuBar" class="progress-fill" style="width:0%;transition:width 0.6s ease;"></div>
+              </div>
+              <div id="cpuFreq" style="font-size:10px;color:#6b7280;margin-top:3px;"></div>
+            </div>
+
+            <!-- RAM -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/></svg>
+                  RAM
+                </span>
+                <span id="ramPct" style="font-size:13px;font-weight:700;color:#e5e7eb;">—</span>
+              </div>
+              <div class="progress-bar" style="height:8px;">
+                <div id="ramBar" class="progress-fill" style="width:0%;background:#3b82f6;transition:width 0.6s ease;"></div>
+              </div>
+              <div id="ramDetail" style="font-size:10px;color:#6b7280;margin-top:3px;"></div>
+            </div>
+
+            <!-- GPU VRAM (oculto si no hay GPU) -->
+            <div id="gpuSection" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h.01M12 12h.01M16 12h.01"/><line x1="6" y1="20" x2="6" y2="22"/><line x1="18" y1="20" x2="18" y2="22"/></svg>
+                  GPU <span id="gpuName" style="color:#6b7280;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                </span>
+                <span id="gpuPct" style="font-size:13px;font-weight:700;color:#e5e7eb;">—</span>
+              </div>
+              <div class="progress-bar" style="height:8px;">
+                <div id="gpuBar" class="progress-fill" style="width:0%;background:#a78bfa;transition:width 0.6s ease;"></div>
+              </div>
+              <div id="gpuDetail" style="font-size:10px;color:#6b7280;margin-top:3px;"></div>
+            </div>
+
+            <!-- Disco -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/></svg>
+                  Disco
+                </span>
+                <span id="diskPct" style="font-size:13px;font-weight:700;color:#e5e7eb;">—</span>
+              </div>
+              <div class="progress-bar" style="height:8px;">
+                <div id="diskBar" class="progress-fill" style="width:0%;background:#facc15;transition:width 0.6s ease;"></div>
+              </div>
+              <div id="diskDetail" style="font-size:10px;color:#6b7280;margin-top:3px;"></div>
+            </div>
+
+            <!-- Proceso IA -->
+            <div style="border-top:1px solid #27272a;padding-top:10px;margin-top:2px;">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4b5563;margin-bottom:8px;">Proceso IA</div>
+              <div class="info-row"><span class="info-label">CPU proceso</span><span class="info-value" id="procCpu">—</span></div>
+              <div class="info-row"><span class="info-label">RAM proceso</span><span class="info-value" id="procRam">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="section">
+          <div class="section-header">
+            <h2 class="section-title">Acciones</h2>
+          </div>
+          <div class="section-body" style="display:flex;flex-direction:column;gap:10px;">
+            <button class="btn btn-primary" onclick="forcePoll()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Forzar búsqueda de jobs
+            </button>
+            <button class="btn btn-ghost" onclick="window.location.reload()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+              Refrescar
+            </button>
+          </div>
+        </div>
+
+        <p class="timestamp" style="text-align:center;width:100%;display:block;" id="lastUpdate">—</p>
+      </div>
+    </div>
+
+    <!-- Analysis history -->
+    <div class="history-grid" id="historyGrid">
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">Historial de análisis</h2>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span id="historyCount" class="section-badge badge-gray">0 análisis</span>
+            <button class="btn btn-ghost" onclick="refreshHistory()" id="btnHistoryRefresh">
+              Actualizar
+            </button>
+          </div>
+        </div>
+        <div class="section-body no-pad" id="historyList" style="max-height:420px;overflow-y:auto;">
+          <div class="empty-state">
+            <div class="empty-icon">🗂️</div>
+            <div class="empty-title">Sin historial</div>
+            <div class="empty-desc">Tus análisis aparecerán aquí cuando subas videos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">Detalle del análisis</h2>
+        </div>
+        <div class="section-body" id="historyDetail">
+          <div class="empty-state">
+            <div class="empty-icon">📄</div>
+            <div class="empty-title">Selecciona un análisis</div>
+            <div class="empty-desc">Haz clic en un elemento del historial para ver los detalles.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const isAdmin = String("{{ user.role }}").toLowerCase() === 'admin';
+    let refreshTimer;
+    let historyCache = [];
+    let selectedJobId = null;
+
+    function showToast(msg, error = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (error ? ' error' : '');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    async function handleLogout() {
+      await fetch('/logout', { method: 'POST' });
+      window.location.href = '/login';
+    }
+
+    async function refresh() {
+      if (!isAdmin) return;
+      try {
+        const [healthRes, queueRes] = await Promise.all([
+          fetch('/dashboard/api/health').then(r => r.json()),
+          fetch('/dashboard/api/queue').then(r => r.json()),
+        ]);
+
+        // Health / worker
+        const h = healthRes;
+        const dot = document.getElementById('workerDot');
+        const badge = document.getElementById('workerStatusBadge');
+        if (h.worker_running) {
+          dot.className = 'section-badge badge-green';
+          dot.innerHTML = '<span class="worker-pulse" style="display:inline-block;margin-right:6px;"></span> Online';
+          badge.className = 'section-badge badge-green';
+          badge.innerHTML = '<span class="worker-pulse" style="display:inline-block;margin-right:6px;"></span> AI Online';
+        } else {
+          dot.className = 'section-badge badge-red';
+          dot.innerHTML = '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#ef4444;margin-right:6px;"></span> Offline';
+          badge.className = 'section-badge badge-red';
+          badge.textContent = 'AI Offline';
+        }
+
+        document.getElementById('statDevice').textContent = h.device || '—';
+        const wi = document.getElementById('workerInfo');
+        wi.innerHTML = `
+          <div class="info-row"><span class="info-label">Estado</span><span class="info-value">${h.worker_running ? '✅ Ejecutándose' : '❌ Detenido'}</span></div>
+          <div class="info-row"><span class="info-label">Job actual</span><span class="info-value">${h.current_job ? '#' + h.current_job : 'Ninguno'}</span></div>
+          <div class="info-row"><span class="info-label">Poll cada</span><span class="info-value">${h.poll_interval}s</span></div>
+          <div class="info-row"><span class="info-label">Dispositivo</span><span class="info-value" style="text-transform:uppercase;">${h.device || '—'}</span></div>
+        `;
+
+        // ── System metrics ───────────────────────────────────────────────────
+        const sys = h.system;
+        if (sys) {
+          // Uptime
+          const up = sys.uptime_seconds || 0;
+          const hh = Math.floor(up / 3600), mm = Math.floor((up % 3600) / 60), ss = Math.floor(up % 60);
+          const upStr = hh > 0 ? `${hh}h ${mm}m` : mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
+          document.getElementById('uptimeBadge').textContent = 'activo ' + upStr;
+          document.getElementById('uptimeBadge').className = 'section-badge badge-green';
+
+          // CPU
+          const cpuColor = sys.cpu_percent > 85 ? '#ef4444' : sys.cpu_percent > 60 ? '#facc15' : '#39FF14';
+          document.getElementById('cpuPct').textContent = sys.cpu_percent.toFixed(1) + '%';
+          document.getElementById('cpuBar').style.width = sys.cpu_percent + '%';
+          document.getElementById('cpuBar').style.background = cpuColor;
+          document.getElementById('cpuCores').textContent = sys.cpu_count + ' núcleos';
+          document.getElementById('cpuFreq').textContent = sys.cpu_freq_mhz ? sys.cpu_freq_mhz.toFixed(0) + ' MHz' : '';
+
+          // RAM
+          const ramColor = sys.ram_percent > 85 ? '#ef4444' : sys.ram_percent > 65 ? '#f97316' : '#3b82f6';
+          document.getElementById('ramPct').textContent = sys.ram_percent.toFixed(1) + '%';
+          document.getElementById('ramBar').style.width = sys.ram_percent + '%';
+          document.getElementById('ramBar').style.background = ramColor;
+          document.getElementById('ramDetail').textContent = `${sys.ram_used_gb} GB / ${sys.ram_total_gb} GB usados`;
+
+          // GPU
+          if (sys.gpu_name) {
+            document.getElementById('gpuSection').style.display = 'block';
+            document.getElementById('gpuName').textContent = sys.gpu_name;
+            const gpuPct = sys.gpu_vram_percent ?? 0;
+            const gpuColor = gpuPct > 90 ? '#ef4444' : gpuPct > 70 ? '#f97316' : '#a78bfa';
+            document.getElementById('gpuPct').textContent = gpuPct.toFixed(1) + '%';
+            document.getElementById('gpuBar').style.width = gpuPct + '%';
+            document.getElementById('gpuBar').style.background = gpuColor;
+            const vramUsed = sys.gpu_vram_used_mb != null ? (sys.gpu_vram_used_mb / 1024).toFixed(2) : '—';
+            const vramTotal = sys.gpu_vram_total_mb != null ? (sys.gpu_vram_total_mb / 1024).toFixed(2) : '—';
+            document.getElementById('gpuDetail').textContent = `${vramUsed} GB / ${vramTotal} GB VRAM`;
+          } else {
+            document.getElementById('gpuSection').style.display = 'none';
+          }
+
+          // Disk
+          const diskColor = sys.disk_percent > 90 ? '#ef4444' : sys.disk_percent > 75 ? '#f97316' : '#facc15';
+          document.getElementById('diskPct').textContent = sys.disk_percent.toFixed(1) + '%';
+          document.getElementById('diskBar').style.width = sys.disk_percent + '%';
+          document.getElementById('diskBar').style.background = diskColor;
+          document.getElementById('diskDetail').textContent = `${sys.disk_used_gb} GB / ${sys.disk_total_gb} GB`;
+
+          // Process
+          document.getElementById('procCpu').textContent = sys.proc_cpu_percent.toFixed(1) + '%';
+          document.getElementById('procRam').textContent = sys.proc_ram_mb > 1024
+            ? (sys.proc_ram_mb / 1024).toFixed(2) + ' GB'
+            : sys.proc_ram_mb.toFixed(0) + ' MB';
+        }
+
+        // Queue
+        const jobs = queueRes.jobs || [];
+        const queueList = document.getElementById('jobList');
+        const queueCount = document.getElementById('queueCount');
+        queueCount.textContent = jobs.length + ' job' + (jobs.length !== 1 ? 's' : '');
+
+        // Stats — use authoritative counts from backend DB, not just the job list
+        const stats = queueRes.stats || {};
+        document.getElementById('statQueued').textContent    = stats.queued    ?? jobs.filter(j => j.status === 'queued').length;
+        document.getElementById('statProcessing').textContent = stats.processing ?? jobs.filter(j => j.status === 'processing').length;
+        document.getElementById('statFailed').textContent    = stats.failed    ?? jobs.filter(j => j.status === 'failed').length;
+
+        if (!jobs.length) {
+          queueList.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">📭</div>
+              <div class="empty-title">Sin trabajos pendientes</div>
+              <div class="empty-desc">Los partidos con análisis solicitado aparecerán aquí.</div>
+            </div>`;
+        } else {
+          queueList.innerHTML = jobs.map(j => {
+            const statusClass = j.status === 'queued' ? 'dot-queued' :
+                                j.status === 'processing' ? 'dot-processing' :
+                                j.status === 'completed' ? 'dot-completed' : 'dot-failed';
+            const badgeClass = j.status === 'queued' ? 'badge-amber' :
+                               j.status === 'processing' ? 'badge-green' :
+                               j.status === 'completed' ? 'badge-green' : 'badge-red';
+            const statusLabel = {queued:'En cola',processing:'Procesando',completed:'Completado',failed:'Fallido'}[j.status] || j.status;
+            const matchName = j.matchName || ('Partido #' + j.matchId);
+            return `
+              <div class="job-item">
+                <div class="job-status-dot ${statusClass}"></div>
+                <div class="job-info">
+                  <div class="job-match">${matchName}</div>
+                  <div class="job-meta">Job #${j.jobId} · Match #${j.matchId} · Liga ${j.leagueId || '—'} · ${j.createdAt ? new Date(j.createdAt).toLocaleString() : '—'}</div>
+                </div>
+                <span class="job-badge ${badgeClass}">${statusLabel}</span>
+              </div>`;
+          }).join('');
+        }
+
+        // Processing progress
+        const procJob = jobs.find(j => j.status === 'processing');
+        const progDiv = document.getElementById('processingProgress');
+        if (procJob && procJob.progress != null) {
+          progDiv.style.display = 'block';
+          document.getElementById('progJobId').textContent = '#' + procJob.jobId;
+          document.getElementById('progPct').textContent = (procJob.progress || 0) + '%';
+          document.getElementById('progFill').style.width = (procJob.progress || 0) + '%';
+        } else if (h.current_job) {
+          progDiv.style.display = 'block';
+          document.getElementById('progJobId').textContent = '#' + h.current_job;
+        } else {
+          progDiv.style.display = 'none';
+        }
+
+        document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleTimeString();
+      } catch (err) {
+        console.error('Refresh error:', err);
+      }
+    }
+
+    function formatMatchName(job) {
+      const match = job.match || {};
+      const home = match.homeTeam?.name || '';
+      const away = match.awayTeam?.name || '';
+      if (home || away) return `${home} vs ${away}`.trim();
+      return 'Partido #' + job.matchId;
+    }
+
+    function renderHistoryList(jobs) {
+      const list = document.getElementById('historyList');
+      const count = document.getElementById('historyCount');
+      count.textContent = jobs.length + ' análisis';
+
+      if (!jobs.length) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🗂️</div>
+            <div class="empty-title">Sin historial</div>
+            <div class="empty-desc">Tus análisis aparecerán aquí cuando subas videos.</div>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = jobs.map(j => {
+        const badgeClass = j.status === 'queued' ? 'badge-amber' :
+                           j.status === 'processing' ? 'badge-green' :
+                           j.status === 'completed' ? 'badge-green' :
+                           j.status === 'failed' ? 'badge-red' : 'badge-gray';
+        const statusLabel = {uploaded:'Subido',annotating:'Anotando',queued:'En cola',processing:'Procesando',completed:'Completado',failed:'Fallido'}[j.status] || j.status;
+        const matchName = formatMatchName(j);
+        const createdAt = j.createdAt ? new Date(j.createdAt).toLocaleString() : '—';
+        return `
+          <div class="history-item ${Number(j.jobId) === Number(selectedJobId) ? 'active' : ''}" data-job-id="${j.jobId}">
+            <div class="job-status-dot ${j.status === 'failed' ? 'dot-failed' : j.status === 'processing' ? 'dot-processing' : j.status === 'completed' ? 'dot-completed' : 'dot-queued'}"></div>
+            <div style="flex:1;min-width:0;">
+              <div class="history-title">${matchName}</div>
+              <div class="history-meta">Job #${j.jobId} · ${createdAt}</div>
+            </div>
+            <span class="job-badge ${badgeClass}">${statusLabel}</span>
+          </div>`;
+      }).join('');
+    }
+
+    async function refreshHistory(selectFirst = false) {
+      const btn = document.getElementById('btnHistoryRefresh');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Actualizando…';
+      }
+      try {
+        const res = await fetch('/dashboard/api/history');
+        if (!res.ok) throw new Error('No se pudo cargar el historial');
+        const data = await res.json();
+        historyCache = data.jobs || [];
+        renderHistoryList(historyCache);
+
+        const stillExists = historyCache.some(j => Number(j.jobId) === Number(selectedJobId));
+        if (selectFirst || (!stillExists && historyCache.length)) {
+          await loadHistoryDetail(historyCache[0].jobId);
+        }
+      } catch (err) {
+        console.error('History error:', err);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Actualizar';
+        }
+      }
+    }
+
+    async function loadHistoryDetail(jobId) {
+      selectedJobId = Number(jobId);
+      renderHistoryList(historyCache);
+
+      const detail = document.getElementById('historyDetail');
+      detail.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Cargando…</div><div class="empty-desc">Obteniendo detalle del análisis.</div></div>';
+
+      try {
+        const res = await fetch(`/dashboard/api/history/${jobId}`);
+        if (!res.ok) throw new Error('No se pudo cargar el detalle');
+        const data = await res.json();
+        const j = data.job;
+        const matchName = formatMatchName(j);
+        const leagueName = j.match?.league?.name || '—';
+        const statusLabel = {uploaded:'Subido',annotating:'Anotando',queued:'En cola',processing:'Procesando',completed:'Completado',failed:'Fallido'}[j.status] || j.status;
+
+        detail.innerHTML = `
+          <div style="margin-bottom:14px;">
+            <div style="font-size:16px;font-weight:800;color:#fff;">${matchName}</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Liga: ${leagueName}</div>
+          </div>
+          <div class="history-detail-row"><span class="detail-label">Estado</span><span class="detail-value">${statusLabel}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Progreso</span><span class="detail-value">${j.progress ?? 0}%</span></div>
+          <div class="history-detail-row"><span class="detail-label">Paso actual</span><span class="detail-value">${j.currentStep || '—'}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Frames</span><span class="detail-value">${j.framesProcessed ?? 0} / ${j.totalFrames ?? '—'}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Job</span><span class="detail-value">#${j.jobId}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Creado</span><span class="detail-value">${j.createdAt ? new Date(j.createdAt).toLocaleString() : '—'}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Actualizado</span><span class="detail-value">${j.updatedAt ? new Date(j.updatedAt).toLocaleString() : '—'}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Video</span><span class="detail-value">${j.videoSupabaseUrl ? `<a class="detail-link" href="${j.videoSupabaseUrl}" target="_blank" rel="noreferrer">Abrir</a>` : '—'}</span></div>
+          <div class="history-detail-row"><span class="detail-label">Error</span><span class="detail-value" style="color:${j.error ? '#f87171' : '#fff'};">${j.error || '—'}</span></div>
+        `;
+      } catch (err) {
+        detail.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-desc">No se pudo cargar el detalle.</div></div>';
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      const item = e.target.closest('.history-item');
+      if (!item) return;
+      const jobId = item.getAttribute('data-job-id');
+      if (jobId) loadHistoryDetail(jobId);
+    });
+
+    async function forcePoll() {
+      const btn = document.getElementById('btnPoll');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="border-color:rgba(255,255,255,0.2);border-top-color:#fff;"></span> Buscando…';
+      try {
+        const res = await fetch('/dashboard/api/poll', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || 'Poll completado');
+      } catch (err) {
+        showToast('Error al hacer poll', true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Forzar poll`;
+      }
+      refresh();
+    }
+
+    if (!isAdmin) {
+      const mainGrid = document.querySelector('.main-grid');
+      if (mainGrid) mainGrid.style.display = 'none';
+      const badge = document.getElementById('workerStatusBadge');
+      if (badge) {
+        badge.className = 'section-badge badge-gray';
+        badge.textContent = 'Sesión activa';
+      }
+    }
+
+    refresh();
+    refreshHistory(true);
+    refreshTimer = setInterval(() => {
+      refresh();
+      refreshHistory();
+    }, 8000);
+  </script>
+</body>
+</html>

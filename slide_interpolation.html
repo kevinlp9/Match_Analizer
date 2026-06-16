@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1400"/>
+<title>TrackInterpolator — Geo-Goal AI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 1400px;
+    min-height: 900px;
+    background: #0a0e1a;
+    font-family: 'Inter', sans-serif;
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+
+  /* ── FONDO ───────────────────────────────────────────────── */
+  .bg-grid {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99,179,237,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,179,237,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+  .bg-glow-1 {
+    position: fixed; width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 70%);
+    top: -150px; left: -100px; pointer-events: none;
+  }
+  .bg-glow-2 {
+    position: fixed; width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(168,85,247,0.07) 0%, transparent 70%);
+    bottom: -100px; right: -50px; pointer-events: none;
+  }
+
+  /* ── LAYOUT ──────────────────────────────────────────────── */
+  .slide {
+    position: relative;
+    width: 1400px;
+    min-height: 900px;
+    padding: 40px 56px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    z-index: 1;
+  }
+
+  /* ── HEADER ──────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(56,189,248,0.1);
+    border: 1px solid rgba(56,189,248,0.25);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #38bdf8;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .badge::before { content: '◆'; font-size: 8px; }
+  h1 {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  h1 .accent { color: #38bdf8; }
+  h1 .accent2 { color: #a855f7; }
+  .subtitle {
+    font-size: 15px;
+    color: #94a3b8;
+    margin-top: 6px;
+    font-weight: 400;
+  }
+  .meta-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .meta-tag {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-family: 'Fira Code', monospace;
+    font-size: 11.5px;
+    color: #64748b;
+  }
+  .meta-tag span { color: #94a3b8; }
+
+  /* ── DIVIDER ─────────────────────────────────────────────── */
+  .divider {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(99,179,237,0.2) 20%, rgba(99,179,237,0.2) 80%, transparent);
+  }
+
+  /* ── BODY GRID ───────────────────────────────────────────── */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 24px;
+    flex: 1;
+  }
+
+  /* ── MAIN PANEL (casos) ──────────────────────────────────── */
+  .main-panel { display: flex; flex-direction: column; gap: 18px; }
+
+  .case-card {
+    border-radius: 16px;
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .case-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    pointer-events: none;
+  }
+
+  /* Caso 1 — Interpolación interior */
+  .case-1 {
+    background: linear-gradient(135deg, rgba(56,189,248,0.07) 0%, rgba(14,165,233,0.04) 100%);
+    border: 1px solid rgba(56,189,248,0.2);
+  }
+  /* Caso 2 — Dead reckoning adelante */
+  .case-2 {
+    background: linear-gradient(135deg, rgba(168,85,247,0.07) 0%, rgba(139,92,246,0.04) 100%);
+    border: 1px solid rgba(168,85,247,0.2);
+  }
+  /* Caso 3 — Dead reckoning atrás */
+  .case-3 {
+    background: linear-gradient(135deg, rgba(245,158,11,0.07) 0%, rgba(234,179,8,0.04) 100%);
+    border: 1px solid rgba(245,158,11,0.2);
+  }
+
+  .case-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .c1 .case-label { color: #38bdf8; }
+  .c2 .case-label { color: #a855f7; }
+  .c3 .case-label { color: #f59e0b; }
+  .c1 { border-left: 3px solid #38bdf8 !important; }
+  .c2 { border-left: 3px solid #a855f7 !important; }
+  .c3 { border-left: 3px solid #f59e0b !important; }
+
+  .case-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+
+  /* ── TIMELINE SVG ────────────────────────────────────────── */
+  .timeline-wrap { width: 100%; }
+  svg.timeline { width: 100%; height: 88px; overflow: visible; }
+
+  /* ── FÓRMULA ─────────────────────────────────────────────── */
+  .formula-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 10px;
+  }
+  .formula-box {
+    background: rgba(0,0,0,0.35);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: 'Fira Code', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    flex: 1;
+  }
+  .f-blue { color: #38bdf8; }
+  .f-purple { color: #c084fc; }
+  .f-amber { color: #fbbf24; }
+  .f-green { color: #34d399; }
+  .f-gray { color: #64748b; }
+  .f-white { color: #e2e8f0; }
+
+  /* ── SIDE PANEL ──────────────────────────────────────────── */
+  .side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+  .info-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .info-card h3 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 14px;
+  }
+
+  .param-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .param-row:last-child { border-bottom: none; }
+  .param-name {
+    font-family: 'Fira Code', monospace;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .param-val {
+    font-family: 'Fira Code', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pv-blue { color: #38bdf8; }
+  .pv-purple { color: #c084fc; }
+  .pv-amber { color: #fbbf24; }
+
+  .pipeline-list { display: flex; flex-direction: column; gap: 0; }
+  .pipe-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    position: relative;
+  }
+  .pipe-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 13px;
+    top: 28px;
+    width: 1px;
+    height: calc(100% - 14px);
+    background: rgba(99,179,237,0.15);
+  }
+  .pipe-dot {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .pd-blue  { background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3); color: #38bdf8; }
+  .pd-gray  { background: rgba(100,116,139,0.15); border: 1px solid rgba(100,116,139,0.3); color: #64748b; }
+  .pd-green { background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); color: #34d399; }
+  .pipe-text { font-size: 12px; color: #94a3b8; line-height: 1.35; }
+  .pipe-text strong { color: #e2e8f0; font-weight: 600; }
+
+  .legend-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .leg-dot {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  }
+  .leg-dash {
+    width: 20px; height: 2px; flex-shrink: 0;
+    border-top: 2px dashed;
+    opacity: 0.7;
+  }
+  .leg-label { font-size: 12px; color: #94a3b8; }
+
+  /* ── FOOTER ──────────────────────────────────────────────── */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 4px;
+  }
+  .footer-path {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    color: #334155;
+  }
+  .footer-path span { color: #475569; }
+  .footer-pills { display: flex; gap: 8px; }
+  .fpill {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 11px;
+    color: #475569;
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow-1"></div>
+<div class="bg-glow-2"></div>
+
+<div class="slide">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="badge">Geo-Goal AI Service</div>
+      <h1>
+        <span class="accent">TrackInterpolator</span>
+        <br>Predicción de <span class="accent2">Frames Sin Detección</span>
+      </h1>
+      <p class="subtitle">Interpolación lineal + Dead Reckoning para completar trayectorias de jugadores y pelota</p>
+    </div>
+    <div class="meta-pill">
+      <div class="meta-tag">video_processor.py <span>línea 397</span></div>
+      <div class="meta-tag">clase <span>TrackInterpolator</span></div>
+      <div class="meta-tag">post-proceso <span>→ ByteTrack</span></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- BODY -->
+  <div class="body-grid">
+
+    <!-- MAIN: 3 CASOS -->
+    <div class="main-panel">
+
+      <!-- CASO 1 -->
+      <div class="case-card case-1 c1">
+        <div class="case-label">Caso 1</div>
+        <div class="case-title">Interpolación Interior — gap entre dos detecciones reales</div>
+        <div class="timeline-wrap">
+          <svg class="timeline" viewBox="0 0 760 88">
+            <!-- línea base -->
+            <line x1="20" y1="44" x2="740" y2="44" stroke="#1e293b" stroke-width="2"/>
+
+            <!-- frames -->
+            <!-- F1 detectado -->
+            <circle cx="60" cy="44" r="13" fill="#0c4a6e" stroke="#38bdf8" stroke-width="2"/>
+            <text x="60" y="49" text-anchor="middle" fill="#38bdf8" font-size="10" font-family="Inter" font-weight="700">F1</text>
+            <text x="60" y="70" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="Inter">Detectado</text>
+
+            <!-- F2 faltante -->
+            <circle cx="170" cy="44" r="13" fill="#0f172a" stroke="#334155" stroke-width="2" stroke-dasharray="4 3"/>
+            <text x="170" y="49" text-anchor="middle" fill="#475569" font-size="10" font-family="Inter" font-weight="700">F2</text>
+
+            <!-- F3 faltante -->
+            <circle cx="280" cy="44" r="13" fill="#0f172a" stroke="#334155" stroke-width="2" stroke-dasharray="4 3"/>
+            <text x="280" y="49" text-anchor="middle" fill="#475569" font-size="10" font-family="Inter" font-weight="700">F3</text>
+
+            <!-- F4 faltante -->
+            <circle cx="390" cy="44" r="13" fill="#0f172a" stroke="#334155" stroke-width="2" stroke-dasharray="4 3"/>
+            <text x="390" y="49" text-anchor="middle" fill="#475569" font-size="10" font-family="Inter" font-weight="700">F4</text>
+
+            <!-- F5 detectado -->
+            <circle cx="500" cy="44" r="13" fill="#0c4a6e" stroke="#38bdf8" stroke-width="2"/>
+            <text x="500" y="49" text-anchor="middle" fill="#38bdf8" font-size="10" font-family="Inter" font-weight="700">F5</text>
+            <text x="500" y="70" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="Inter">Detectado</text>
+
+            <!-- línea interpolada -->
+            <line x1="73" y1="44" x2="157" y2="44" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+            <line x1="183" y1="44" x2="267" y2="44" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+            <line x1="293" y1="44" x2="377" y2="44" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+            <line x1="403" y1="44" x2="487" y2="44" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+
+            <!-- puntos interpolados -->
+            <circle cx="170" cy="44" r="7" fill="rgba(56,189,248,0.25)" stroke="#38bdf8" stroke-width="1.5" opacity="0.6"/>
+            <circle cx="280" cy="44" r="7" fill="rgba(56,189,248,0.25)" stroke="#38bdf8" stroke-width="1.5" opacity="0.6"/>
+            <circle cx="390" cy="44" r="7" fill="rgba(56,189,248,0.25)" stroke="#38bdf8" stroke-width="1.5" opacity="0.6"/>
+
+            <text x="170" y="25" text-anchor="middle" fill="#38bdf8" font-size="8.5" font-family="Inter" opacity="0.8">α=0.4</text>
+            <text x="280" y="25" text-anchor="middle" fill="#38bdf8" font-size="8.5" font-family="Inter" opacity="0.8">α=0.4</text>
+            <text x="390" y="25" text-anchor="middle" fill="#38bdf8" font-size="8.5" font-family="Inter" opacity="0.8">α=0.4</text>
+
+            <!-- flecha y label gap -->
+            <line x1="60" y1="11" x2="500" y2="11" stroke="#38bdf8" stroke-width="1" opacity="0.3"/>
+            <polygon points="60,8 60,14 53,11" fill="#38bdf8" opacity="0.3"/>
+            <polygon points="500,8 500,14 507,11" fill="#38bdf8" opacity="0.3"/>
+            <text x="280" y="9" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="Inter" opacity="0.6">gap = 3 frames  ≤  max_gap_frames (15)</text>
+
+            <!-- condición límite -->
+            <rect x="560" y="28" width="160" height="32" rx="8" fill="rgba(56,189,248,0.07)" stroke="rgba(56,189,248,0.2)" stroke-width="1"/>
+            <text x="640" y="42" text-anchor="middle" fill="#64748b" font-size="9" font-family="Fira Code">gap &gt; 15 frames</text>
+            <text x="640" y="54" text-anchor="middle" fill="#ef4444" font-size="9" font-family="Inter" font-weight="600">→ track perdido, no estimar</text>
+          </svg>
+        </div>
+        <div class="formula-row">
+          <div class="formula-box">
+            <span class="f-gray">// t ∈ (0,1) para cada frame intermedio</span><br>
+            <span class="f-blue">t</span> <span class="f-white">= step / (gap + 1)</span><br>
+            <span class="f-purple">x</span> <span class="f-white">= x₀ + </span><span class="f-blue">t</span><span class="f-white"> × (x₁ − x₀)</span>
+            &nbsp;&nbsp;&nbsp;
+            <span class="f-purple">y</span> <span class="f-white">= y₀ + </span><span class="f-blue">t</span><span class="f-white"> × (y₁ − y₀)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CASO 2 -->
+      <div class="case-card case-2 c2">
+        <div class="case-label">Caso 2</div>
+        <div class="case-title">Dead Reckoning Adelante — jugador desaparece al final del track</div>
+        <div class="timeline-wrap">
+          <svg class="timeline" viewBox="0 0 760 88">
+            <line x1="20" y1="44" x2="740" y2="44" stroke="#1e293b" stroke-width="2"/>
+
+            <!-- F_prev detectado -->
+            <circle cx="120" cy="44" r="13" fill="#2e1065" stroke="#a855f7" stroke-width="2"/>
+            <text x="120" y="49" text-anchor="middle" fill="#a855f7" font-size="9" font-family="Inter" font-weight="700">F-1</text>
+
+            <!-- F_last detectado -->
+            <circle cx="260" cy="44" r="13" fill="#2e1065" stroke="#a855f7" stroke-width="2"/>
+            <text x="260" y="49" text-anchor="middle" fill="#a855f7" font-size="9" font-family="Inter" font-weight="700">F_last</text>
+            <text x="260" y="70" text-anchor="middle" fill="#a855f7" font-size="9" font-family="Inter">Última det.</text>
+
+            <!-- flecha velocidad -->
+            <line x1="120" y1="44" x2="245" y2="44" stroke="#a855f7" stroke-width="1" opacity="0.4"/>
+            <defs>
+              <marker id="arrow-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#a855f7"/>
+              </marker>
+            </defs>
+            <!-- vector velocidad -->
+            <line x1="260" y1="30" x2="360" y2="30" stroke="#a855f7" stroke-width="2" marker-end="url(#arrow-v)" opacity="0.7"/>
+            <text x="310" y="22" text-anchor="middle" fill="#a855f7" font-size="9" font-family="Fira Code" opacity="0.9">vx, vy</text>
+
+            <!-- frames predichos -->
+            <circle cx="380" cy="44" r="10" fill="rgba(168,85,247,0.15)" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.7"/>
+            <circle cx="490" cy="44" r="10" fill="rgba(168,85,247,0.1)" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.55"/>
+            <circle cx="600" cy="44" r="10" fill="rgba(168,85,247,0.06)" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.4"/>
+
+            <line x1="273" y1="44" x2="370" y2="44" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+            <line x1="390" y1="44" x2="480" y2="44" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.3"/>
+            <line x1="500" y1="44" x2="590" y2="44" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.2"/>
+
+            <text x="380" y="72" text-anchor="middle" fill="#a855f7" font-size="8" font-family="Inter" opacity="0.8">+1</text>
+            <text x="490" y="72" text-anchor="middle" fill="#a855f7" font-size="8" font-family="Inter" opacity="0.7">+2</text>
+            <text x="600" y="72" text-anchor="middle" fill="#a855f7" font-size="8" font-family="Inter" opacity="0.5">+3…8</text>
+
+            <text x="380" y="25" text-anchor="middle" fill="#a855f7" font-size="8.5" font-family="Inter" opacity="0.7">α=0.4</text>
+            <text x="490" y="25" text-anchor="middle" fill="#a855f7" font-size="8.5" font-family="Inter" opacity="0.6">α=0.4</text>
+            <text x="600" y="25" text-anchor="middle" fill="#a855f7" font-size="8.5" font-family="Inter" opacity="0.4">α=0.4</text>
+
+            <rect x="640" y="28" width="85" height="32" rx="8" fill="rgba(168,85,247,0.07)" stroke="rgba(168,85,247,0.2)" stroke-width="1"/>
+            <text x="682" y="42" text-anchor="middle" fill="#64748b" font-size="9" font-family="Fira Code">max 8 frames</text>
+            <text x="682" y="54" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="Inter">≈ 1.6 s @ 5fps</text>
+          </svg>
+        </div>
+        <div class="formula-row">
+          <div class="formula-box">
+            <span class="f-purple">vx</span><span class="f-white"> = (x_last − x_prev) / dt</span>
+            &nbsp;&nbsp;
+            <span class="f-purple">vy</span><span class="f-white"> = (y_last − y_prev) / dt</span><br>
+            <span class="f-amber">x_pred</span><span class="f-white"> = x_last + </span><span class="f-purple">vx</span><span class="f-white"> × step</span>
+            &nbsp;&nbsp;
+            <span class="f-green">// clamp: max(−5, min(105, x_pred))</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CASO 3 -->
+      <div class="case-card case-3 c3">
+        <div class="case-label">Caso 3</div>
+        <div class="case-title">Dead Reckoning Atrás — jugador aparece tarde (inicio del track)</div>
+        <div class="timeline-wrap">
+          <svg class="timeline" viewBox="0 0 760 88">
+            <line x1="20" y1="44" x2="740" y2="44" stroke="#1e293b" stroke-width="2"/>
+
+            <!-- frames predichos hacia atrás -->
+            <circle cx="170" cy="44" r="10" fill="rgba(245,158,11,0.06)" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.4"/>
+            <circle cx="280" cy="44" r="10" fill="rgba(245,158,11,0.1)" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.55"/>
+            <circle cx="390" cy="44" r="10" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.7"/>
+
+            <!-- F_first detectado -->
+            <circle cx="500" cy="44" r="13" fill="#451a03" stroke="#f59e0b" stroke-width="2"/>
+            <text x="500" y="49" text-anchor="middle" fill="#f59e0b" font-size="9" font-family="Inter" font-weight="700">F_first</text>
+            <text x="500" y="70" text-anchor="middle" fill="#f59e0b" font-size="9" font-family="Inter">Primera det.</text>
+
+            <!-- F_second detectado -->
+            <circle cx="620" cy="44" r="13" fill="#451a03" stroke="#f59e0b" stroke-width="2"/>
+            <text x="620" y="49" text-anchor="middle" fill="#f59e0b" font-size="9" font-family="Inter" font-weight="700">F+1</text>
+
+            <!-- líneas punteadas -->
+            <line x1="160" y1="44" x2="270" y2="44" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.2"/>
+            <line x1="290" y1="44" x2="380" y2="44" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.3"/>
+            <line x1="400" y1="44" x2="487" y2="44" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.4"/>
+            <line x1="513" y1="44" x2="607" y2="44" stroke="#f59e0b" stroke-width="1" opacity="0.3"/>
+
+            <!-- flecha velocidad invertida -->
+            <defs>
+              <marker id="arrow-back" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 10 0 L 0 5 L 10 10 z" fill="#f59e0b"/>
+              </marker>
+            </defs>
+            <line x1="500" y1="28" x2="390" y2="28" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow-back)" opacity="0.7"/>
+            <text x="445" y="20" text-anchor="middle" fill="#f59e0b" font-size="9" font-family="Fira Code" opacity="0.9">−vx, −vy</text>
+
+            <text x="170" y="25" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-family="Inter" opacity="0.4">−3…8</text>
+            <text x="280" y="25" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-family="Inter" opacity="0.55">−2</text>
+            <text x="390" y="25" text-anchor="middle" fill="#f59e0b" font-size="8.5" font-family="Inter" opacity="0.7">−1</text>
+          </svg>
+        </div>
+        <div class="formula-row">
+          <div class="formula-box">
+            <span class="f-amber">vx</span><span class="f-white"> = (x_second − x_first) / dt_head</span><br>
+            <span class="f-amber">x_pred</span><span class="f-white"> = x_first − </span><span class="f-amber">vx</span><span class="f-white"> × step</span>
+            &nbsp;&nbsp;
+            <span class="f-green">// proyecta velocidad en sentido inverso</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-panel -->
+
+    <!-- SIDE PANEL -->
+    <div class="side-panel">
+
+      <!-- Leyenda -->
+      <div class="info-card">
+        <h3>Leyenda</h3>
+        <div class="legend-row">
+          <div class="leg-dot" style="background:#38bdf8; border:2px solid #38bdf8;"></div>
+          <span class="leg-label">Posición <strong style="color:#e2e8f0">detectada</strong> — alpha 1.0</span>
+        </div>
+        <div class="legend-row">
+          <div class="leg-dot" style="background:rgba(56,189,248,0.25); border:2px dashed #38bdf8;"></div>
+          <span class="leg-label">Posición <strong style="color:#e2e8f0">interpolada</strong> — alpha 0.4</span>
+        </div>
+        <div class="legend-row" style="margin-top:4px;">
+          <div style="width:20px; border-top: 2px dashed #64748b; opacity:0.7; flex-shrink:0;"></div>
+          <span class="leg-label">Track <strong style="color:#ef4444">perdido</strong> — gap &gt; 15 frames</span>
+        </div>
+      </div>
+
+      <!-- Parámetros -->
+      <div class="info-card">
+        <h3>Parámetros</h3>
+        <div class="param-row">
+          <span class="param-name">max_gap_frames</span>
+          <span class="param-val pv-blue">15</span>
+        </div>
+        <div class="param-row">
+          <span class="param-name">ball_predict</span>
+          <span class="param-val pv-purple">8</span>
+        </div>
+        <div class="param-row">
+          <span class="param-name">player_predict</span>
+          <span class="param-val pv-amber">8</span>
+        </div>
+        <div class="param-row">
+          <span class="param-name">@ 5 fps →</span>
+          <span class="param-val" style="color:#34d399">1.6 s</span>
+        </div>
+        <div class="param-row">
+          <span class="param-name">clamp x</span>
+          <span class="param-val" style="color:#94a3b8; font-size:11px;">−5 … 105 m</span>
+        </div>
+        <div class="param-row">
+          <span class="param-name">clamp y</span>
+          <span class="param-val" style="color:#94a3b8; font-size:11px;">−5 … 73 m</span>
+        </div>
+      </div>
+
+      <!-- Pipeline -->
+      <div class="info-card">
+        <h3>Posición en el pipeline</h3>
+        <div class="pipeline-list">
+          <div class="pipe-step">
+            <div class="pipe-dot pd-gray">1</div>
+            <div class="pipe-text"><strong>ByteTrack</strong><br>detección + seguimiento</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-dot pd-gray">2</div>
+            <div class="pipe-text"><strong>Homografía</strong><br>píxeles → metros</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-dot pd-blue">3</div>
+            <div class="pipe-text"><strong>TrackInterpolator</strong><br>rellena gaps ← aquí</div>
+          </div>
+          <div class="pipe-step">
+            <div class="pipe-dot pd-green">4</div>
+            <div class="pipe-text"><strong>Heatmap + stats</strong><br>salida final</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output flags -->
+      <div class="info-card">
+        <h3>Flags en el output</h3>
+        <div style="font-family:'Fira Code',monospace; font-size:11px; line-height:2; color:#64748b;">
+          <span style="color:#a855f7;">Player2D</span>.interpolated<br>
+          &nbsp;&nbsp;<span style="color:#34d399;">= True</span> &nbsp;<span style="color:#475569;">→ estimada</span><br>
+          <span style="color:#38bdf8;">FrameData</span>.ball_interpolated<br>
+          &nbsp;&nbsp;<span style="color:#34d399;">= True</span> &nbsp;<span style="color:#475569;">→ pelota estimada</span>
+        </div>
+      </div>
+
+    </div><!-- /side-panel -->
+  </div><!-- /body-grid -->
+
+  <!-- FOOTER -->
+  <div class="divider"></div>
+  <div class="footer">
+    <div class="footer-path">
+      Geo-Goal_ai_service / src / <span>video_processor.py</span>
+      &nbsp;·&nbsp; class <span>TrackInterpolator</span> &nbsp;·&nbsp; línea <span>397 – 641</span>
+    </div>
+    <div class="footer-pills">
+      <div class="fpill">Interpolación Lineal</div>
+      <div class="fpill">Dead Reckoning</div>
+      <div class="fpill">No usa Kalman</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+
+echo "-----> [post_compile] Forzando opencv-python-headless (sin libGL)"
+
+# CRÍTICO: ambas variantes comparten el directorio cv2/.
+# Si solo desinstalamos una, la otra queda corrupta.
+# Por eso desinstalamos AMBAS y luego reinstalamos la headless desde cero.
+pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
+
+# Reinstalar SOLO la headless desde cero
+pip install --no-cache-dir --force-reinstall --no-deps opencv-python-headless
+
+# Verificar que cv2 importa correctamente — falla el build si no
+python -c "import cv2; print('[post_compile] cv2 OK, version:', cv2.__version__)"
+
+echo "-----> [post_compile] Listo"

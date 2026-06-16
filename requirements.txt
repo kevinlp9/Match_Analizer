@@ -1,0 +1,16 @@
+requests
+python-dotenv
+psutil
+numpy
+ultralytics
+scikit-learn
+supervision
+torch
+yt-dlp
+fastapi
+uvicorn
+httpx
+jinja2
+python-multipart
+# Nota: opencv-python-headless se instala dinámicamente en bin/post_compile
+# para reemplazar a opencv-python (con libGL) que jala ultralytics como dep.
